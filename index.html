@@ -1,34 +1,47 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>韓文聽寫練習</title>
+    <title>韓文學習網站</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f5f7fb; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center; }
-        .word { font-size: 24px; color: #7f8c8d; margin-bottom: 20px; }
-        input { width: 90%; padding: 15px; font-size: 20px; margin-bottom: 15px; border: 2px solid #ddd; border-radius: 8px; text-align: center; }
-        .btn-group { display: flex; gap: 10px; justify-content: center; }
-        button { padding: 12px 20px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; color: white; }
-        .check-btn { background: #4a90e2; }
-        .replay-btn { background: #95a5a6; }
+        body { font-family: sans-serif; background: #f5f7fb; display: flex; justify-content: center; padding: 20px; }
+        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
+        .panel { display: none; } .panel.active { display: block; }
+        .word { font-size: 32px; font-weight: bold; color: #4a90e2; margin: 20px 0; }
+        input { width: 90%; padding: 12px; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 8px; }
+        canvas { border: 2px dashed #ccc; width: 100%; height: 150px; margin-bottom: 10px; cursor: crosshair; }
+        button { padding: 10px 15px; background: #4a90e2; color: white; border: none; border-radius: 6px; cursor: pointer; }
     </style>
 </head>
 <body>
 <div class="container">
-    <div id="question" class="word">載入中...</div>
-    <input type="text" id="answer" placeholder="請輸入韓文" autocomplete="off">
-    <div class="btn-group">
-        <button class="replay-btn" onclick="speakCurrent()">重聽 🔊</button>
-        <button class="check-btn" onclick="checkAnswer()">確認答案</button>
+    <button onclick="switchTab('quiz')">測驗</button>
+    <button onclick="switchTab('manage')">管理</button>
+
+    <div id="quiz" class="panel active">
+        <div id="question" class="word">載入中...</div>
+        <input type="text" id="answer" placeholder="請輸入韓文">
+        <br>
+        <button onclick="speakCurrent()">聽音 🔊</button>
+        <button onclick="checkAnswer()">確認答案</button>
+        <hr>
+        <canvas id="drawCanvas"></canvas>
+        <button onclick="clearCanvas()">清除手寫</button>
+    </div>
+
+    <div id="manage" class="panel">
+        <h2>管理題庫</h2>
+        <input id="newCh" placeholder="中文">
+        <input id="newKr" placeholder="韓文">
+        <button onclick="addWord()">新增單字</button>
+        <div id="wordList"></div>
     </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
 <script>
+    // === [重要] 請把這一段換成你自己專案的設定值 ===
     const firebaseConfig = {
         apiKey: "AIzaSyCj20LGt2WR0TWw-kszy5FNYAXQYVVCEdc",
         authDomain: "kr-quiz.firebaseapp.com",
@@ -36,59 +49,44 @@
         projectId: "kr-quiz",
         storageBucket: "kr-quiz.firebasestorage.app",
         messagingSenderId: "1049086906902",
-        appId: "1:1049086906902:web:6e366746cd757022cedb37"
+        appId: "1:1049086906902:web:6e366746cd757022cedb37",
+        measurementId: "G-M1Z2N0E1TX"
     };
+    // ============================================
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    let quizList = [];
-    let currentIndex = 0;
+    let quizList = [], currentIndex = 0;
 
+    // 新增：音效與語音邏輯
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    function playSound(freq) {
-        const osc = audioCtx.createOscillator();
-        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-        osc.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.1);
-    }
+    function playSound(f) { const o = audioCtx.createOscillator(); o.frequency.value = f; o.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.1); }
+    function speak(t) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.lang = 'ko-KR'; window.speechSynthesis.speak(u); }
+    function speakCurrent() { speak(quizList[currentIndex].kr); }
 
-    function speak(text) {
-        window.speechSynthesis.cancel(); // 先清除未完成的朗讀
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'ko-KR';
-        window.speechSynthesis.speak(utterance);
-    }
+    // 功能切換
+    function switchTab(id) { document.querySelectorAll('.panel').forEach(p => p.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+    
+    // 資料庫讀取
+    db.ref('words').on('value', (s) => { const data = s.val(); quizList = Object.values(data); if(quizList.length > 0) showQuestion(); });
 
-    function speakCurrent() {
-        speak(quizList[currentIndex].kr);
-    }
-
-    db.ref('words').on('value', (snapshot) => {
-        const data = snapshot.val();
-        quizList = Object.values(data);
-        showQuestion();
-    });
-
-    function showQuestion() {
-        const q = quizList[currentIndex];
-        document.getElementById('question').innerText = q.ch;
-        speak(q.kr);
-    }
+    function showQuestion() { document.getElementById('question').innerText = quizList[currentIndex].ch; speakCurrent(); }
 
     function checkAnswer() {
-        const input = document.getElementById('answer').value.trim();
-        if (input === quizList[currentIndex].kr) {
-            playSound(600); // 答對：高音
-            alert("答對了！");
-            currentIndex = (currentIndex + 1) % quizList.length;
-            document.getElementById('answer').value = '';
-            showQuestion();
-        } else {
-            playSound(200); // 答錯：低音
-            alert("再聽一次試試看！");
-        }
+        if(document.getElementById('answer').value === quizList[currentIndex].kr) {
+            playSound(600); alert("答對！"); currentIndex = (currentIndex + 1) % quizList.length; showQuestion();
+        } else { playSound(200); alert("錯了，再聽一次！"); }
     }
+
+    function addWord() { db.ref('words').push({ch: document.getElementById('newCh').value, kr: document.getElementById('newKr').value}); }
+
+    // 手寫板邏輯
+    const canvas = document.getElementById('drawCanvas'); const ctx = canvas.getContext('2d');
+    let drawing = false;
+    canvas.onmousedown = () => drawing = true; canvas.onmouseup = () => drawing = false;
+    canvas.onmousemove = (e) => { if(!drawing) return; ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); };
+    function clearCanvas() { ctx.clearRect(0,0,canvas.width, canvas.height); ctx.beginPath(); }
 </script>
 </body>
 </html>
+

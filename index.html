@@ -2,117 +2,298 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>韓文單字學習網</title>
     <style>
-        body { font-family: sans-serif; background: #f5f7fb; display: flex; justify-content: center; padding: 20px; }
-        .container { background: white; padding: 25px; border-radius: 12px; width: 100%; max-width: 500px; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f5f7fb; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 500px; text-align: center; }
         .panel { display: none; } .panel.active { display: block; }
-        .word { font-size: 32px; font-weight: bold; color: #4a90e2; margin: 15px 0; }
-        input { width: 90%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; }
-        canvas { border: 2px dashed #ccc; width: 100%; height: 100px; margin: 10px 0; }
-        button { padding: 8px 12px; cursor: pointer; }
+        .tab-btn { background: #e0e0e0; color: #333; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; margin-bottom: 15px; }
+        .tab-btn.active { background: #4a90e2; color: white; }
+        
+        /* 測驗區樣式 */
+        #progress { font-size: 16px; font-weight: bold; color: #7f8c8d; margin-bottom: 10px; }
+        select { width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; }
+        .word { font-size: 36px; font-weight: bold; color: #4a90e2; margin: 15px 0; }
+        input[type="text"] { width: 90%; padding: 12px; margin-bottom: 15px; border: 2px solid #ddd; border-radius: 8px; font-size: 18px; text-align: center; }
+        
+        /* 手寫板樣式 */
+        canvas { border: 2px dashed #bdc3c7; width: 100%; height: 200px; margin-bottom: 15px; background: #fafafa; border-radius: 8px; touch-action: none; /* 避免 iPad 畫圖時網頁滑動 */ }
+        
+        button { padding: 10px 15px; background: #4a90e2; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; margin: 5px; }
+        .btn-green { background: #2ecc71; }
+        .btn-gray { background: #95a5a6; }
+        
+        #revealArea { display: none; margin-top: 15px; padding: 15px; background: #e8f8f5; border-radius: 8px; }
+        #revealText { font-size: 28px; font-weight: bold; color: #1abc9c; margin-bottom: 10px; }
+        
+        /* 管理區樣式 */
+        .manage-item { display: flex; justify-content: space-between; align-items: center; background: #f9f9f9; padding: 10px; margin-bottom: 5px; border-radius: 6px; border: 1px solid #eee; }
+        .manage-item button { background: #e74c3c; padding: 5px 10px; font-size: 14px; }
     </style>
 </head>
 <body>
 <div class="container">
-    <button onclick="switchTab('quiz')">測驗</button>
-    <button onclick="switchTab('manage')">管理</button>
+    <div>
+        <button id="btn-quiz" class="tab-btn active" onclick="switchTab('quiz')">測驗模式</button>
+        <button id="btn-manage" class="tab-btn" onclick="switchTab('manage')">管理題庫</button>
+    </div>
 
     <div id="quiz" class="panel active">
-        <select id="filterCategory" onchange="showQuestion()"><option value="全部">全部分類</option></select>
+        <select id="filterCategory" onchange="loadQuizQueue()"></select>
+        <div id="progress">載入中...</div>
+        
         <div id="question" class="word">...</div>
-        <input type="text" id="answer" placeholder="輸入韓文">
-        <button onclick="checkAnswer()">確認</button>
-        <button onclick="speakCurrent()">重聽 🔊</button>
+        
+        <input type="text" id="answer" placeholder="鍵盤作答 (按 Enter 送出)" onkeypress="handleEnter(event)">
+        <div>
+            <button onclick="checkTypingAnswer()">鍵盤確認</button>
+            <button class="btn-gray" onclick="speakCurrent()">重聽 🔊</button>
+        </div>
+        
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+        
+        <div style="color: #7f8c8d; font-size: 14px; margin-bottom: 5px;">iPad / 滑鼠 手寫區</div>
         <canvas id="drawCanvas"></canvas>
-        <button onclick="clearCanvas()">清除手寫</button>
+        <div>
+            <button class="btn-gray" onclick="clearCanvas()">清除筆跡</button>
+            <button class="btn-green" onclick="showHandwritingAnswer()">手寫對答案</button>
+        </div>
+        
+        <div id="revealArea">
+            <div id="revealText"></div>
+            <button onclick="nextQuestion()">下一題 ➔</button>
+        </div>
     </div>
 
     <div id="manage" class="panel">
-        <input id="newCh" placeholder="中文">
-        <input id="newKr" placeholder="韓文">
-        <input id="newCat" placeholder="分類名稱">
-        <button onclick="addWord()">新增單字</button>
-        <div id="wordList"></div>
+        <input type="text" id="newCh" placeholder="中文">
+        <input type="text" id="newKr" placeholder="韓文">
+        <input type="text" id="newCat" placeholder="分類名稱 (如：第一課)">
+        <button class="btn-green" style="width: 90%; margin-bottom: 15px;" onclick="addWord()">新增單字</button>
+        <div id="wordList" style="text-align: left;"></div>
     </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 <script>
-    // === 請在此填入你原本的 firebaseConfig ===
-    const firebaseConfig = { 
-       apiKey: "AIzaSyCj20LGt2WR0TWw-kszy5FNYAXQYVVCEdc",
+    // === [重要] 請在此填入你的 firebaseConfig ===
+    const firebaseConfig = {
+        apiKey: "AIzaSyCj20LGt2WR0TWw-kszy5FNYAXQYVVCEdc",
         authDomain: "kr-quiz.firebaseapp.com",
         databaseURL: "https://kr-quiz-default-rtdb.firebaseio.com",
         projectId: "kr-quiz",
         storageBucket: "kr-quiz.firebasestorage.app",
         messagingSenderId: "1049086906902",
-        appId: "1:1049086906902:web:6e366746cd757022cedb37",
-        measurementId: "G-M1Z2N0E1TX"
-};
+        appId: "1:1049086906902:web:6e366746cd757022cedb37"
+    };
+    // ==========================================
+
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    let words = {}, currentIndex = 0;
+    
+    let words = {};
+    let quizQueue = []; // 亂數排序後的題庫
+    let currentIndex = 0;
 
     // 音效與語音
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(f) { const o = audioCtx.createOscillator(); o.frequency.value = f; o.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.1); }
     function speak(t) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.lang = 'ko-KR'; window.speechSynthesis.speak(u); }
-    function speakCurrent() { let list = getFiltered(); speak(list[currentIndex].kr); }
+    function speakCurrent() { if(quizQueue.length > 0) speak(quizQueue[currentIndex].kr); }
 
-    // 邏輯處理
+    // === 資料與測驗邏輯 ===
     db.ref('words').on('value', (s) => {
         words = s.val() || {};
-        renderManage(); updateCategories(); showQuestion();
+        updateCategories(); 
+        loadQuizQueue(); // 資料更新時重新載入題庫
+        renderManage();
     });
 
-    function getFiltered() {
+    // 建立亂數題庫
+    function loadQuizQueue() {
         let cat = document.getElementById('filterCategory').value;
         let list = Object.keys(words).map(k => ({id: k, ...words[k]}));
-        return cat === '全部' ? list : list.filter(w => w.cat === cat);
+        
+        // 分類過濾
+        if (cat && cat !== '全部') {
+            list = list.filter(w => w.cat === cat);
+        }
+        
+        // 洗牌演算法 (Random Shuffle)
+        for (let i = list.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [list[i], list[j]] = [list[j], list[i]];
+        }
+        
+        quizQueue = list;
+        currentIndex = 0;
+        showQuestion();
     }
 
     function showQuestion() {
-        let list = getFiltered();
-        if(list.length === 0) return;
-        document.getElementById('question').innerText = list[currentIndex % list.length].ch;
+        document.getElementById('revealArea').style.display = 'none';
+        document.getElementById('answer').value = '';
+        clearCanvas();
+
+        if (quizQueue.length === 0) {
+            document.getElementById('progress').innerText = "0 / 0";
+            document.getElementById('question').innerText = "此分類無單字";
+            return;
+        }
+
+        // 更新進度條
+        document.getElementById('progress').innerText = `第 ${currentIndex + 1} 題 / 共 ${quizQueue.length} 題`;
+        document.getElementById('question').innerText = quizQueue[currentIndex].ch;
         speakCurrent();
     }
 
-    function checkAnswer() {
-        let list = getFiltered();
-        if(document.getElementById('answer').value === list[currentIndex % list.length].kr) {
-            alert("答對！"); currentIndex++; showQuestion();
-        } else { alert("再試一次"); }
+    // 鍵盤模式：支援 Enter 鍵
+    function handleEnter(e) {
+        if (e.key === 'Enter') {
+            checkTypingAnswer();
+        }
     }
 
+    // 鍵盤模式：自動比對
+    function checkTypingAnswer() {
+        if (quizQueue.length === 0) return;
+        let input = document.getElementById('answer').value.trim();
+        if (input === quizQueue[currentIndex].kr) {
+            playSound(600); 
+            nextQuestion();
+        } else { 
+            playSound(200); 
+            alert("答錯囉，請再試一次！"); 
+        }
+    }
+
+    // 手寫模式：顯示答案讓用戶自行比對
+    function showHandwritingAnswer() {
+        if (quizQueue.length === 0) return;
+        document.getElementById('revealText').innerText = quizQueue[currentIndex].kr;
+        document.getElementById('revealArea').style.display = 'block';
+    }
+
+    function nextQuestion() {
+        currentIndex++;
+        if (currentIndex >= quizQueue.length) {
+            alert("太棒了！此分類測驗完成，將重新洗牌開始！");
+            loadQuizQueue();
+        } else {
+            showQuestion();
+        }
+    }
+
+    // === 管理邏輯 ===
     function addWord() {
-        db.ref('words').push({ch: document.getElementById('newCh').value, kr: document.getElementById('newKr').value, cat: document.getElementById('newCat').value || '未分類'});
+        let ch = document.getElementById('newCh').value.trim();
+        let kr = document.getElementById('newKr').value.trim();
+        let cat = document.getElementById('newCat').value.trim() || '未分類';
+        if (!ch || !kr) return alert("中文與韓文不可為空！");
+        
+        db.ref('words').push({ch: ch, kr: kr, cat: cat});
+        document.getElementById('newCh').value = '';
+        document.getElementById('newKr').value = '';
     }
 
-    function delWord(id) { db.ref('words/' + id).remove(); }
+    function delWord(id) { 
+        if(confirm("確定要刪除這個單字嗎？")) db.ref('words/' + id).remove(); 
+    }
 
     function renderManage() {
         let html = '';
         Object.keys(words).forEach(k => {
-            html += `<div>${words[k].cat} | ${words[k].ch}:${words[k].kr} <button onclick="delWord('${k}')">刪除</button></div>`;
+            html += `<div class="manage-item">
+                        <span><b>[${words[k].cat}]</b> ${words[k].ch} - ${words[k].kr}</span>
+                        <button onclick="delWord('${k}')">刪除</button>
+                     </div>`;
         });
         document.getElementById('wordList').innerHTML = html;
     }
 
     function updateCategories() {
+        let currentSelection = document.getElementById('filterCategory').value;
         let cats = new Set(Object.values(words).map(w => w.cat || '未分類'));
         let sel = document.getElementById('filterCategory');
+        
         sel.innerHTML = '<option value="全部">全部分類</option>';
         cats.forEach(c => sel.innerHTML += `<option value="${c}">${c}</option>`);
+        
+        // 保持原本選取的分類
+        if (cats.has(currentSelection) || currentSelection === '全部') {
+            sel.value = currentSelection;
+        }
     }
 
-    // 介面與畫布
-    function switchTab(id) { document.querySelectorAll('.panel').forEach(p => p.classList.remove('active')); document.getElementById(id).classList.add('active'); }
-    const canvas = document.getElementById('drawCanvas'); const ctx = canvas.getContext('2d');
-    canvas.onmousedown = (e) => { ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); canvas.onmousemove = (e) => { ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); }; };
-    canvas.onmouseup = () => canvas.onmousemove = null;
-    function clearCanvas() { ctx.clearRect(0,0,canvas.width, canvas.height); }
+    function switchTab(id) { 
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active')); 
+        document.getElementById(id).classList.add('active'); 
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('btn-' + id).classList.add('active');
+    }
+
+    // === 完美支援 iPad / 滑鼠的手寫板邏輯 ===
+    const canvas = document.getElementById('drawCanvas'); 
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+
+    // 調整 Canvas 解析度對齊實際顯示大小
+    function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    // 延遲執行以確保 DOM 渲染完成
+    setTimeout(resizeCanvas, 100);
+
+    function getPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const evt = e.touches ? e.touches[0] : e;
+        return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+    }
+
+    function startDraw(e) {
+        if(e.cancelable) e.preventDefault(); // 防止螢幕捲動
+        drawing = true;
+        const pos = getPos(e);
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+        ctx.lineWidth = 3;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "#2c3e50";
+    }
+
+    function draw(e) {
+        if (!drawing) return;
+        if(e.cancelable) e.preventDefault(); // 防止螢幕捲動
+        const pos = getPos(e);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+    }
+
+    function endDraw(e) {
+        drawing = false;
+        ctx.beginPath();
+    }
+
+    // 綁定滑鼠事件
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', endDraw);
+    canvas.addEventListener('mouseout', endDraw);
+    
+    // 綁定觸控事件 (支援 iPad / 手機)
+    canvas.addEventListener('touchstart', startDraw, { passive: false });
+    canvas.addEventListener('touchmove', draw, { passive: false });
+    canvas.addEventListener('touchend', endDraw);
+
+    function clearCanvas() { 
+        ctx.clearRect(0, 0, canvas.width, canvas.height); 
+        ctx.beginPath(); 
+    }
 </script>
 </body>
 </html>
